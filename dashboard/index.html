@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luxi Scheduler</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://ljcrmobehiktgjymysjy.supabase.co wss://ljcrmobehiktgjymysjy.supabase.co; img-src 'self' data: https://ljcrmobehiktgjymysjy.supabase.co; media-src https://ljcrmobehiktgjymysjy.supabase.co; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<script src="vendor/supabase.js"></script>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --text: #1b1b1a; --muted: #6b6b66; --line: #e3e2dd;
+    --accent: #3b5bdb; --accent-text: #ffffff; --ok: #2b8a3e; --warn: #c27c0e; --bad: #c92a2a; --chip: #efeee9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --panel: #1e1e1c; --text: #ecebe6; --muted: #9a9993; --line: #33322f;
+      --accent: #748ffc; --accent-text: #0c0c0b; --ok: #69db7c; --warn: #fcc419; --bad: #ff8787; --chip: #2a2a27;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413; --panel: #1e1e1c; --text: #ecebe6; --muted: #9a9993; --line: #33322f;
+    --accent: #748ffc; --accent-text: #0c0c0b; --ok: #69db7c; --warn: #fcc419; --bad: #ff8787; --chip: #2a2a27;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; margin-right: auto; }
+  nav button { background: none; border: 0; color: var(--muted); font: inherit; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+  nav button.on { background: var(--chip); color: var(--text); font-weight: 600; }
+  main { max-width: 920px; margin: 0 auto; padding: 20px 16px 60px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, textarea, select { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; }
+  textarea { min-height: 110px; resize: vertical; }
+  button.primary, button.ghost, button.danger { font: inherit; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid transparent; }
+  button.primary { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.ghost { background: none; border-color: var(--line); color: var(--text); }
+  button.danger { background: none; border-color: var(--line); color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 180px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--chip); font-size: 12px; font-weight: 600; }
+  .s-posted, .s-done { color: var(--ok); } .s-failed { color: var(--bad); } .s-processing, .s-partial { color: var(--warn); }
+  .s-queued, .s-scheduled { color: var(--accent); } .s-draft, .s-cancelled { color: var(--muted); }
+  .target { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-top: 1px dashed var(--line); font-size: 14px; }
+  .target .err { color: var(--bad); font-size: 12px; width: 100%; word-break: break-word; }
+  .acct-pick { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+  .acct-pick textarea { min-height: 70px; margin-top: 6px; }
+  .count.over { color: var(--bad); font-weight: 600; }
+  .thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--chip); flex: none; }
+  .day { font-weight: 600; margin: 22px 0 8px; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; display: none; max-width: calc(100% - 32px); }
+  .hidden { display: none !important; }
+  a { color: var(--accent); }
+  .help { font-size: 13px; color: var(--muted); background: var(--chip); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+  .help ol { margin: 4px 0 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Luxi Scheduler</h1>
+  <nav id="nav" class="hidden">
+    <button data-tab="queue" class="on">Queue</button>
+    <button data-tab="compose">New post</button>
+    <button data-tab="accounts">Accounts</button>
+  </nav>
+  <button id="logout" class="ghost hidden">Sign out</button>
+</header>
+
+<main>
+  <!-- Login -->
+  <section id="login" class="card hidden" style="max-width:420px;margin:40px auto">
+    <h2 style="margin-top:0">Sign in</h2>
+    <label>Email</label><input id="email" type="email" autocomplete="username">
+    <label>Password</label><input id="password" type="password" autocomplete="current-password">
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="signin">Sign in</button>
+      <button class="ghost" id="signup">Create account</button>
+    </div>
+    <p class="muted" id="loginMsg"></p>
+  </section>
+
+  <section id="denied" class="card hidden">
+    <h2 style="margin-top:0">Not authorized</h2>
+    <p>This account isn't on the scheduler's admin list. Ask Claude to add your email to <code>social_admins</code>.</p>
+  </section>
+
+  <!-- Queue -->
+  <section id="tab-queue" class="hidden">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <button class="ghost" data-filter="upcoming">Upcoming</button>
+        <button class="ghost" data-filter="past">Posted &amp; failed</button>
+        <button class="ghost" data-filter="draft">Drafts</button>
+      </div>
+      <button class="ghost" id="refresh">Refresh</button>
+    </div>
+    <div id="queueList"></div>
+  </section>
+
+  <!-- Compose -->
+  <section id="tab-compose" class="hidden">
+    <div class="card">
+      <h2 style="margin-top:0" id="composeTitle">New post</h2>
+      <label>Video or image (MP4, MOV, JPG, PNG)</label>
+      <input id="file" type="file" accept="video/mp4,video/quicktime,image/jpeg,image/png">
+      <p class="muted" id="fileInfo"></p>
+      <label>Title (internal, also used as LinkedIn video title)</label>
+      <input id="title" maxlength="200">
+      <label>Caption (used everywhere unless you override it below)</label>
+      <textarea id="caption"></textarea>
+      <label>Post to</label>
+      <div id="acctPicks"><p class="muted">No accounts yet. Add one in the Accounts tab.</p></div>
+      <div class="row" style="margin-top:14px">
+        <div class="grow"><label>When</label><input id="when" type="datetime-local"></div>
+        <div class="grow"><label>Save as</label>
+          <select id="saveAs"><option value="scheduled">Scheduled</option><option value="draft">Draft (won't post)</option></select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="primary" id="save">Schedule</button>
+        <button class="ghost" id="postNow">Post now</button>
+        <span class="muted" id="saveMsg"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Accounts -->
+  <section id="tab-accounts" class="hidden">
+    <div id="acctList"></div>
+    <div class="card">
+      <h2 style="margin-top:0">Connect an account</h2>
+      <label>Platform</label>
+      <select id="aPlatform">
+        <option value="instagram">Instagram</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="x">X</option>
+      </select>
+      <label>Display name</label><input id="aName" placeholder="e.g. Luxi Capture IG">
+      <div id="aFields"></div>
+      <div class="help" id="aHelp"></div>
+      <div class="row" style="margin-top:14px"><button class="primary" id="aSave">Save account</button><span class="muted" id="aMsg"></span></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+// Refuse to run inside another site's frame (clickjacking).
+if (window.top !== window.self) { document.body.innerHTML = ""; throw new Error("framed"); }
+const SUPABASE_URL = "https://ljcrmobehiktgjymysjy.supabase.co";
+const SUPABASE_KEY = "sb_publishable_RW_90iGgI0kx_2p7ToLGdg_fuwVWozM";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const LIMITS = { instagram: 2200, linkedin: 3000, x: 280 };
+const PLATFORM = { instagram: "Instagram", linkedin: "LinkedIn", x: "X" };
+let accounts = [];
+let filter = "upcoming";
+
+function toast(msg, ms = 3500) {
+  const t = $("toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), ms);
+}
+
+// ---------- auth ----------
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  ["login", "denied", "nav", "logout", "tab-queue", "tab-compose", "tab-accounts"].forEach((id) => $(id).classList.add("hidden"));
+  if (!session) { $("login").classList.remove("hidden"); return; }
+  $("logout").classList.remove("hidden");
+  const { data: isAdmin } = await sb.rpc("social_is_admin");
+  if (!isAdmin) { $("denied").classList.remove("hidden"); return; }
+  $("nav").classList.remove("hidden");
+  await loadAccounts();
+  showTab("queue");
+}
+$("signin").onclick = async () => {
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+  $("loginMsg").textContent = error ? error.message : "";
+  if (!error) boot();
+};
+$("signup").onclick = async () => {
+  const { error } = await sb.auth.signUp({ email: $("email").value.trim(), password: $("password").value });
+  $("loginMsg").textContent = error ? error.message : "Check your inbox to confirm your email, then sign in.";
+};
+$("logout").onclick = async () => { await sb.auth.signOut(); boot(); };
+
+// ---------- tabs ----------
+function showTab(name) {
+  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  ["queue", "compose", "accounts"].forEach((t) => $("tab-" + t).classList.toggle("hidden", t !== name));
+  if (name === "queue") loadQueue();
+  if (name === "compose") renderPicks();
+  if (name === "accounts") renderAccounts();
+}
+document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+
+// ---------- accounts ----------
+async function loadAccounts() {
+  const { data, error } = await sb.from("social_accounts").select("*").order("platform").order("name");
+  if (error) return toast(error.message);
+  accounts = data;
+}
+
+const FIELDS = {
+  instagram: [
+    ["external_id", "Instagram user ID (numbers)"],
+    ["access_token", "Long-lived access token", "secret"],
+    ["expires", "Token expires on", "date"],
+  ],
+  linkedin: [
+    ["external_id", "Author URN — urn:li:person:xxxx or urn:li:organization:123"],
+    ["access_token", "Access token", "secret"],
+    ["expires", "Token expires on", "date"],
+  ],
+  x: [
+    ["external_id", "X username (for your reference)"],
+    ["consumer_key", "API Key (consumer key)", "secret"],
+    ["consumer_secret", "API Key Secret", "secret"],
+    ["access_token", "Access Token", "secret"],
+    ["access_token_secret", "Access Token Secret", "secret"],
+  ],
+};
+const HELP = {
+  instagram: `Uses the Instagram API with Instagram Login (Business or Creator account, no Facebook Page needed).<ol>
+    <li>Create an app at developers.facebook.com → use case “Manage messaging & content on Instagram”.</li>
+    <li>Add your Instagram account as a tester, and grant <b>instagram_business_basic</b> and <b>instagram_business_content_publish</b>.</li>
+    <li>In “Generate access tokens”, generate a token for your account. It is long-lived (60 days). The scheduler refreshes it automatically.</li>
+    <li>The user ID is shown next to the token, or call graph.instagram.com/me?fields=user_id.</li></ol>`,
+  linkedin: `<ol>
+    <li>Create an app at linkedin.com/developers and verify it with your Company Page.</li>
+    <li>Products: add <b>Share on LinkedIn</b> (personal posts). For Company Page posts, request <b>Community Management API</b> (approval takes time).</li>
+    <li>Use the developer portal's OAuth token tool with scopes <b>openid profile w_member_social</b> (or <b>w_organization_social</b> for pages). Tokens last 60 days. Paste a new one here before it expires.</li>
+    <li>Person URN: call api.linkedin.com/v2/userinfo with the token and use urn:li:person:&lt;sub&gt;.</li></ol>`,
+  x: `<ol>
+    <li>Sign up at developer.x.com, create a Project and App.</li>
+    <li>App settings → User authentication: set permissions to <b>Read and write</b>.</li>
+    <li>Keys and tokens: copy the API Key and Secret, then <b>generate</b> the Access Token and Secret (after setting Read and write).</li>
+    <li>Posting through the API is billed by X. Check your plan in the developer portal.</li></ol>`,
+};
+function renderAccountForm() {
+  const p = $("aPlatform").value;
+  $("aFields").innerHTML = FIELDS[p].map(([k, label, kind]) =>
+    `<label>${label}</label><input data-f="${k}" type="${kind === "secret" ? "password" : kind === "date" ? "date" : "text"}" autocomplete="off">`).join("");
+  $("aHelp").innerHTML = HELP[p];
+}
+$("aPlatform").onchange = renderAccountForm;
+
+$("aSave").onclick = async () => {
+  const platform = $("aPlatform").value;
+  const vals = Object.fromEntries([...document.querySelectorAll("#aFields [data-f]")].map((i) => [i.dataset.f, i.value.trim()]));
+  const name = $("aName").value.trim();
+  const missing = FIELDS[platform].filter(([k, , kind]) => kind !== "date" && !vals[k]).map(([, l]) => l);
+  if (!name || missing.length) return ($("aMsg").textContent = "Fill in: " + (name ? "" : "Display name ") + missing.join(", "));
+  const { expires, external_id, ...creds } = vals;
+  $("aSave").disabled = true;
+  const { data: acc, error } = await sb.from("social_accounts").insert({
+    platform, name, external_id, token_expires_at: expires ? new Date(expires).toISOString() : null,
+  }).select().single();
+  if (!error) {
+    const { error: e2 } = await sb.from("social_account_secrets").insert({ account_id: acc.id, credentials: creds });
+    if (e2) { await sb.from("social_accounts").delete().eq("id", acc.id); $("aMsg").textContent = e2.message; }
+    else { $("aMsg").textContent = ""; $("aName").value = ""; renderAccountForm(); toast("Account saved"); }
+  } else $("aMsg").textContent = error.message;
+  $("aSave").disabled = false;
+  await loadAccounts(); renderAccounts();
+};
+
+function renderAccounts() {
+  $("acctList").innerHTML = accounts.length ? accounts.map((a) => {
+    const days = a.token_expires_at ? Math.round((new Date(a.token_expires_at) - Date.now()) / 86400000) : null;
+    const exp = days === null ? "" : days < 0 ? `<span class="s-failed">token expired</span>` :
+      days < 10 ? `<span class="s-processing">token expires in ${days} days</span>` : `<span class="muted">token valid ${days} days</span>`;
+    return `<div class="card"><div class="row">
+      <span class="chip">${PLATFORM[a.platform]}</span><b class="grow">${esc(a.name)}</b>${exp}
+      <button class="ghost" data-tok="${a.id}">Update token</button>
+      <button class="ghost" data-toggle="${a.id}">${a.active ? "Pause" : "Resume"}</button>
+      <button class="danger" data-del="${a.id}">Remove</button></div>
+      <div class="muted">${esc(a.external_id)}${a.active ? "" : " · paused"}</div>
+      ${a.last_error ? `<div class="muted s-failed">${esc(a.last_error)}</div>` : ""}</div>`;
+  }).join("") : "";
+  document.querySelectorAll("[data-toggle]").forEach((b) => (b.onclick = async () => {
+    const a = accounts.find((x) => x.id === b.dataset.toggle);
+    await sb.from("social_accounts").update({ active: !a.active }).eq("id", a.id);
+    await loadAccounts(); renderAccounts();
+  }));
+  document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Remove this account? Its scheduled posts to it are removed too.")) return;
+    await sb.from("social_accounts").delete().eq("id", b.dataset.del);
+    await loadAccounts(); renderAccounts();
+  }));
+  document.querySelectorAll("[data-tok]").forEach((b) => (b.onclick = async () => {
+    const a = accounts.find((x) => x.id === b.dataset.tok);
+    const creds = {};
+    for (const [k, label, kind] of FIELDS[a.platform]) {
+      if (kind !== "secret") continue;
+      const v = prompt(`${a.name}: ${label}`);
+      if (!v) return;
+      creds[k] = v.trim();
+    }
+    const upd = { credentials: creds, updated_at: new Date().toISOString() };
+    const { error } = await sb.from("social_account_secrets").update(upd).eq("account_id", a.id);
+    if (error) return toast(error.message);
+    if (a.platform !== "x") {
+      const d = prompt("Token expires on (YYYY-MM-DD), leave empty if unknown", new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10));
+      await sb.from("social_accounts").update({ token_expires_at: d ? new Date(d).toISOString() : null, last_error: null }).eq("id", a.id);
+    }
+    toast("Token updated"); await loadAccounts(); renderAccounts();
+  }));
+}
+
+// ---------- compose ----------
+function renderPicks() {
+  if (!$("when").value) {
+    const d = new Date(Date.now() + 60 * 60000); d.setMinutes(0, 0, 0);
+    $("when").value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+  const active = accounts.filter((a) => a.active);
+  if (!active.length) return;
+  $("acctPicks").innerHTML = active.map((a) => `
+    <div class="acct-pick">
+      <label class="row" style="margin:0;color:var(--text)"><input type="checkbox" data-pick="${a.id}" style="width:auto">
+        <span class="chip">${PLATFORM[a.platform]}</span> ${esc(a.name)}
+        <span class="muted" style="margin-left:auto"><a href="#" data-ov="${a.id}">Custom caption</a></span></label>
+      <textarea class="hidden" data-cap="${a.id}" placeholder="Caption just for ${esc(a.name)}"></textarea>
+      <div class="muted count" data-count="${a.id}"></div>
+    </div>`).join("");
+  document.querySelectorAll("[data-ov]").forEach((l) => (l.onclick = (e) => {
+    e.preventDefault(); document.querySelector(`[data-cap="${l.dataset.ov}"]`).classList.toggle("hidden"); updateCounts();
+  }));
+  document.querySelectorAll("[data-cap],[data-pick]").forEach((el) => (el.oninput = updateCounts));
+  updateCounts();
+}
+function captionFor(a) {
+  const ov = document.querySelector(`[data-cap="${a.id}"]`);
+  return ov && !ov.classList.contains("hidden") && ov.value.trim() ? ov.value : $("caption").value;
+}
+function updateCounts() {
+  for (const a of accounts.filter((x) => x.active)) {
+    const el = document.querySelector(`[data-count="${a.id}"]`); if (!el) continue;
+    const n = [...captionFor(a)].length, max = LIMITS[a.platform];
+    el.textContent = `${n} / ${max} characters`;
+    el.classList.toggle("over", n > max);
+  }
+}
+$("caption").oninput = updateCounts;
+$("file").onchange = () => {
+  const f = $("file").files[0];
+  $("fileInfo").textContent = f ? `${f.name} · ${(f.size / 1048576).toFixed(1)} MB${f.size > 50 * 1048576 ? " — over 50 MB, the free Supabase plan may reject it" : ""}` : "";
+};
+
+async function savePost(now) {
+  const picked = accounts.filter((a) => document.querySelector(`[data-pick="${a.id}"]`)?.checked);
+  if (!picked.length) return ($("saveMsg").textContent = "Pick at least one account.");
+  const f = $("file").files[0];
+  for (const a of picked) {
+    if ([...captionFor(a)].length > LIMITS[a.platform]) return ($("saveMsg").textContent = `Caption too long for ${a.name}.`);
+    if (a.platform === "instagram" && !f) return ($("saveMsg").textContent = "Instagram needs a video or image.");
+  }
+  const when = now ? new Date() : new Date($("when").value);
+  if (isNaN(when)) return ($("saveMsg").textContent = "Pick a date and time.");
+  $("save").disabled = $("postNow").disabled = true;
+  try {
+    let media_path = null, media_type = null, media_size = null;
+    if (f) {
+      $("saveMsg").textContent = "Uploading…";
+      const ext = (f.name.split(".").pop() || "bin").toLowerCase();
+      media_path = `${crypto.randomUUID()}.${ext}`;
+      media_type = f.type.startsWith("video") ? "video" : "image";
+      media_size = f.size;
+      const { error } = await sb.storage.from("social-media").upload(media_path, f, { contentType: f.type, upsert: false });
+      if (error) throw error;
+    }
+    $("saveMsg").textContent = "Saving…";
+    const { data: post, error } = await sb.from("social_posts").insert({
+      title: $("title").value.trim() || null, caption: $("caption").value, media_path, media_type, media_size,
+      scheduled_at: when.toISOString(), status: now ? "scheduled" : $("saveAs").value,
+    }).select().single();
+    if (error) throw error;
+    const targets = picked.map((a) => ({
+      post_id: post.id, account_id: a.id, caption: captionFor(a) === $("caption").value ? null : captionFor(a),
+    }));
+    const { error: e2 } = await sb.from("social_post_targets").insert(targets);
+    if (e2) throw e2;
+    $("saveMsg").textContent = "";
+    ["file", "title", "caption"].forEach((id) => ($(id).value = "")); $("fileInfo").textContent = "";
+    toast(now ? "Queued. It goes out within about 2 minutes." : "Saved");
+    showTab("queue");
+  } catch (e) {
+    $("saveMsg").textContent = e.message || String(e);
+  } finally {
+    $("save").disabled = $("postNow").disabled = false;
+  }
+}
+$("save").onclick = () => savePost(false);
+$("postNow").onclick = () => savePost(true);
+
+// ---------- queue ----------
+document.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => { filter = b.dataset.filter; loadQueue(); }));
+$("refresh").onclick = () => loadQueue();
+
+async function loadQueue() {
+  document.querySelectorAll("[data-filter]").forEach((b) => b.classList.toggle("primary", b.dataset.filter === filter));
+  let q = sb.from("social_posts").select("*, targets:social_post_targets(*, account:social_accounts(name, platform))");
+  if (filter === "upcoming") q = q.eq("status", "scheduled").order("scheduled_at", { ascending: true });
+  else if (filter === "draft") q = q.eq("status", "draft").order("scheduled_at", { ascending: true });
+  else q = q.in("status", ["done", "partial", "failed", "cancelled"]).order("scheduled_at", { ascending: false });
+  const { data, error } = await q.limit(100);
+  if (error) return toast(error.message);
+  if (!data.length) { $("queueList").innerHTML = `<p class="muted" style="margin-top:24px">Nothing here yet.</p>`; return; }
+  let lastDay = "";
+  $("queueList").innerHTML = data.map((p) => {
+    const d = new Date(p.scheduled_at);
+    const day = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    const head = day !== lastDay ? `<div class="day">${day}</div>` : ""; lastDay = day;
+    const url = p.media_path ? `${SUPABASE_URL}/storage/v1/object/public/social-media/${encodeURIComponent(p.media_path)}` : "";
+    const thumb = !url ? `<div class="thumb"></div>` : p.media_type === "video"
+      ? `<video class="thumb" src="${url}#t=0.5" muted preload="metadata"></video>` : `<img class="thumb" src="${url}" alt="">`;
+    const targets = p.targets.map((t) => `<div class="target">
+        <span class="chip">${PLATFORM[t.account?.platform] ?? "?"}</span> ${esc(t.account?.name)}
+        <b class="s-${t.status}">${t.status}</b>
+        ${t.permalink ? `<a href="${esc(t.permalink)}" target="_blank" rel="noopener">view post</a>` : ""}
+        ${t.status === "failed" ? `<button class="ghost" data-retry="${t.id}" data-post="${p.id}">Retry</button>` : ""}
+        ${t.error && t.status !== "posted" ? `<div class="err">${esc(t.error)}</div>` : ""}
+      </div>`).join("");
+    const actions = p.status === "scheduled" || p.status === "draft"
+      ? `${p.status === "draft" ? `<button class="ghost" data-sched="${p.id}">Schedule</button>` : ""}
+         <button class="ghost" data-now="${p.id}">Post now</button>
+         <button class="danger" data-cancel="${p.id}">Cancel</button>`
+      : `<button class="danger" data-delete="${p.id}" data-path="${esc(p.media_path ?? "")}">Delete</button>`;
+    return `${head}<div class="card"><div class="row" style="align-items:flex-start">
+        ${thumb}
+        <div class="grow">
+          <div class="row"><b>${esc(p.title || "(untitled)")}</b><span class="chip s-${p.status}">${p.status}</span>
+            <span class="muted">${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div>
+          <div class="muted" style="white-space:pre-wrap;max-height:4.5em;overflow:hidden">${esc(p.caption)}</div>
+        </div>
+        <div class="row">${actions}</div>
+      </div>${targets}</div>`;
+  }).join("");
+
+  document.querySelectorAll("[data-now]").forEach((b) => (b.onclick = async () => {
+    await sb.from("social_posts").update({ scheduled_at: new Date().toISOString(), status: "scheduled" }).eq("id", b.dataset.now);
+    toast("Queued. It goes out within about 2 minutes."); loadQueue();
+  }));
+  document.querySelectorAll("[data-sched]").forEach((b) => (b.onclick = async () => {
+    await sb.from("social_posts").update({ status: "scheduled" }).eq("id", b.dataset.sched); loadQueue();
+  }));
+  document.querySelectorAll("[data-cancel]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Cancel this post?")) return;
+    await sb.from("social_post_targets").update({ status: "cancelled" }).eq("post_id", b.dataset.cancel).in("status", ["queued", "processing"]);
+    await sb.from("social_posts").update({ status: "cancelled" }).eq("id", b.dataset.cancel); loadQueue();
+  }));
+  document.querySelectorAll("[data-retry]").forEach((b) => (b.onclick = async () => {
+    await sb.from("social_post_targets").update({ status: "queued", attempts: 0, error: null, state: {}, next_attempt_at: null }).eq("id", b.dataset.retry);
+    await sb.from("social_posts").update({ status: "scheduled" }).eq("id", b.dataset.post);
+    toast("Retrying within about 2 minutes"); loadQueue();
+  }));
+  document.querySelectorAll("[data-delete]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Delete this post from the scheduler? (It stays on the social networks.)")) return;
+    if (b.dataset.path) await sb.storage.from("social-media").remove([b.dataset.path]);
+    await sb.from("social_posts").delete().eq("id", b.dataset.delete); loadQueue();
+  }));
+}
+
+renderAccountForm();
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") boot(); });
+boot();
+</script>
+</body>
+</html>
